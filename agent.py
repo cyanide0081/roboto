@@ -1,4 +1,5 @@
 from enum import Enum
+import sys
 import time
 import random
 import pyray as rl
@@ -18,8 +19,30 @@ MAX_X = COL_COUNT - 1
 MAX_Y = ROW_COUNT - 1
 
 def main():
+    if len(sys.argv) < 2:
+        print_usage()
+        return
+    
+    context = SimulationContext(None, None)
+    model = sys.argv[1]
+    if model == '1':
+        context.draw_proc = draw_world_mk1
+        context.step_proc = step_world_mk1
+    elif model == '2':
+        print('not implemented')
+        return
+    elif model == '3':
+        print('not implemented')
+        return
+    elif model == '4':
+        print('not implemented')
+        return
+    else:
+        print_usage()
+        return
+    
     rl.init_window(WINDOW_WIDTH, WINDOW_HEIGHT, 'ロボット')
-    rl.set_target_fps(TARGET_FPS)
+    rl.set_target_fps(TARGET_FPS) # TODO(cya): change to 60 and do manual sleep
     
     state = State(Position(
         random.randint(0, MAX_X),
@@ -27,14 +50,11 @@ def main():
     ))
     pick_initial_direction(state)
     while state.running and not rl.window_should_close():
-        # TODO(cya): abstract the simulation running part based on argv[1] to
-        # select the agent model (from 1 to 4)
-        
         rl.begin_drawing()
-        draw_world(state)
+        context.draw_proc(state)
         rl.end_drawing()
         
-        update_world(state)
+        context.step_proc(state)
         
     rl.close_window()
         
@@ -63,7 +83,7 @@ def pick_initial_direction(state):
         state.walls_reached.append(state.direction) 
         state.direction = rotate_robot_clockwise(state)
     
-def update_world(state):
+def step_world_mk1(state):
     next_position = move_robot(state)
     if will_collide(next_position):
         state.walls_reached.append(state.direction) 
@@ -96,7 +116,7 @@ def will_collide(next_position):
     y = next_position.y
     return not (x >= 0 and x < len(GRID[0]) and y >= 0 and y < len(GRID))
 
-def draw_world(state):
+def draw_world_mk1(state):
     rl.clear_background(rl.BLACK)
     rl.draw_rectangle(
         state.position.x * PIXELS_PER_SLOT,
@@ -124,5 +144,13 @@ class State:
         self.walls_reached = []
         self.running = True
 
+class SimulationContext:
+    def __init__(self, draw_proc, update_proc):
+        self.draw_proc = draw_proc
+        self.update_proc = update_proc
+
+def print_usage():
+    print('usage: {0} [MODEL]'.format(sys.argv[0]))
+    
 if __name__ == '__main__':
     main()
