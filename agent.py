@@ -26,8 +26,9 @@ def main():
     context = SimulationContext(None, None)
     model = sys.argv[1]
     if model == '1':
-        context.draw_proc = draw_world_mk1
-        context.step_proc = step_world_mk1
+        context.state = Mk1State()
+        context.draw_proc = mk1_draw_world
+        context.step_proc = mk1_step_world
     elif model == '2':
         print('not implemented')
         return
@@ -44,17 +45,14 @@ def main():
     rl.init_window(WINDOW_WIDTH, WINDOW_HEIGHT, 'ロボット')
     rl.set_target_fps(TARGET_FPS) # TODO(cya): change to 60 and do manual sleep
     
-    state = State(Position(
-        random.randint(0, MAX_X),
-        random.randint(0, MAX_Y)
-    ))
-    pick_initial_direction(state)
-    while state.running and not rl.window_should_close():
-        rl.begin_drawing()
-        context.draw_proc(state)
-        rl.end_drawing()
+    while not rl.window_should_close():
+        context.step_proc(context.state)
+        if not context.state.running:
+            break
         
-        context.step_proc(state)
+        rl.begin_drawing()
+        context.draw_proc(context.state)
+        rl.end_drawing()
         
     rl.close_window()
         
@@ -80,22 +78,29 @@ def pick_initial_direction(state):
         state.direction = Direction.LEFT
 
     if will_collide(state.position):
-        state.walls_reached.append(state.direction) 
         state.direction = rotate_robot_clockwise(state)
     
-def step_world_mk1(state):
-    next_position = move_robot(state)
-    if will_collide(next_position):
-        state.walls_reached.append(state.direction) 
-        state.direction = rotate_robot_clockwise(state)
-        next_position = move_robot(state)
+def mk1_step_world(state):
+    if state.position == None:
+        state.position = Position(
+            random.randint(0, MAX_X),
+            random.randint(0, MAX_Y)
+        )
+        state.direction = Direction.UP
     
-    if len(state.walls_reached) == len(Direction):
-        state.running = False
+    next_position = mk1_move_robot(state)
+    while will_collide(next_position):
+        if state.direction == Direction.LEFT:
+            state.running = False
+            break
+        
+        state.direction = rotate_robot_clockwise(state)
+        next_position = mk1_move_robot(state)
+    
         
     state.position = next_position
 
-def move_robot(state):
+def mk1_move_robot(state):
     next_position = Position(state.position.x, state.position.y)
     if state.direction == Direction.UP:
         next_position.y -= 1
@@ -103,7 +108,7 @@ def move_robot(state):
         next_position.x += 1
     elif state.direction == Direction.DOWN:
         next_position.y += 1
-    else:
+    elif state.direction == Direction.LEFT:
         next_position.x -= 1
 
     return next_position
@@ -116,7 +121,7 @@ def will_collide(next_position):
     y = next_position.y
     return not (x >= 0 and x < len(GRID[0]) and y >= 0 and y < len(GRID))
 
-def draw_world_mk1(state):
+def mk1_draw_world(state):
     rl.clear_background(rl.BLACK)
     rl.draw_rectangle(
         state.position.x * PIXELS_PER_SLOT,
@@ -137,11 +142,10 @@ class Direction(Enum):
     DOWN = 2
     LEFT = 3
     
-class State:
-    def __init__(self, position):
-        self.position = position
+class Mk1State:
+    def __init__(self):
+        self.position = None
         self.direction = None
-        self.walls_reached = []
         self.running = True
 
 class SimulationContext:
