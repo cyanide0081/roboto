@@ -4,31 +4,30 @@ import time
 import random
 import pyray as rl
 
-TARGET_FPS = 10
 ROW_COUNT = 10
 COL_COUNT = ROW_COUNT
-
-# NOTE(cya): silly python static array syntax
-GRID = [[0 for _ in range(COL_COUNT)] for _ in range(ROW_COUNT)]
-PIXELS_PER_SLOT = 48
-
-WINDOW_WIDTH = COL_COUNT * PIXELS_PER_SLOT
-WINDOW_HEIGHT = ROW_COUNT * PIXELS_PER_SLOT
-
 MAX_X = COL_COUNT - 1
 MAX_Y = ROW_COUNT - 1
+
+# NOTE(cya): silly python static 2D array syntax
+GRID = [[0 for _ in range(COL_COUNT)] for _ in range(ROW_COUNT)]
+
+PIXEL_SCALE = 48
+WINDOW_WIDTH = COL_COUNT * PIXEL_SCALE
+WINDOW_HEIGHT = ROW_COUNT * PIXEL_SCALE
+TARGET_FPS = 10
 
 def main():
     if len(sys.argv) < 2:
         print_usage()
         return
     
-    context = SimulationContext(None, None)
+    context = SimulationContext()
     model = sys.argv[1]
     if model == '1':
         context.state = Mk1State()
-        context.draw_proc = mk1_draw_world
         context.step_proc = mk1_step_world
+        context.draw_proc = mk1_draw_world
     elif model == '2':
         print('not implemented')
         return
@@ -55,30 +54,16 @@ def main():
         rl.end_drawing()
         
     rl.close_window()
-        
-def pick_initial_direction(state):
-    distance_top = state.position.y
-    distance_right = MAX_X - state.position.x
-    distance_bottom = MAX_Y - state.position.y
-    distance_left = state.position.x
-
-    min_distance = min([
-        distance_top,
-        distance_right,
-        distance_bottom,
-        distance_left,
-    ])
-    if min_distance == distance_top:
-        state.direction = Direction.UP
-    elif min_distance == distance_right:
-        state.direction = Direction.RIGHT
-    elif min_distance == distance_bottom:
-        state.direction = Direction.DOWN
-    else:
-        state.direction = Direction.LEFT
-
-    if will_collide(state.position):
-        state.direction = rotate_robot_clockwise(state)
+    
+def mk1_draw_world(state):
+    rl.clear_background(rl.BLACK)
+    rl.draw_rectangle(
+        state.position.x * PIXEL_SCALE,
+        state.position.y * PIXEL_SCALE,
+        PIXEL_SCALE,
+        PIXEL_SCALE,
+        rl.PINK
+    )
     
 def mk1_step_world(state):
     if state.position == None:
@@ -121,16 +106,6 @@ def will_collide(next_position):
     y = next_position.y
     return not (x >= 0 and x < len(GRID[0]) and y >= 0 and y < len(GRID))
 
-def mk1_draw_world(state):
-    rl.clear_background(rl.BLACK)
-    rl.draw_rectangle(
-        state.position.x * PIXELS_PER_SLOT,
-        state.position.y * PIXELS_PER_SLOT,
-        PIXELS_PER_SLOT,
-        PIXELS_PER_SLOT,
-        rl.PINK
-    )
-
 class Position:
     def __init__(self, x, y):
         self.x = x
@@ -149,9 +124,10 @@ class Mk1State:
         self.running = True
 
 class SimulationContext:
-    def __init__(self, draw_proc, update_proc):
-        self.draw_proc = draw_proc
-        self.update_proc = update_proc
+    def __init__(self):
+        self.state = None
+        self.step_proc = None
+        self.draw_proc = None
 
 def print_usage():
     print('usage: {0} [MODEL]'.format(sys.argv[0]))
