@@ -16,9 +16,6 @@ def main():
         context.step_proc = mk1_step_world
         context.draw_proc = mk1_draw_world
     elif model == '2':
-        print('not finished yet')
-        return
-        
         context.state = Mk2State()
         context.step_proc = mk2_step_world
         context.draw_proc = mk2_draw_world
@@ -53,19 +50,19 @@ def mk1_draw_world(state):
     
 def mk1_step_world(state):
     if not state.running:
-        state.position = pick_random_position()
+        state.grid = EMTPY_GRID.copy()
+        state.position = pick_random_position(state.grid)
         state.direction = Direction.UP
         state.running = True
     
     next_position = mk1_move_robot(state)
-    while will_collide(next_position):
+    while is_illegal_position(state.grid, next_position):
         if state.direction == Direction.LEFT:
             state.running = False
             break
-        
+    
         state.direction = rotate_robot_clockwise(state)
         next_position = mk1_move_robot(state)
-    
         
     state.position = next_position
 
@@ -84,37 +81,75 @@ def mk1_move_robot(state):
 
 class Mk1State:
     def __init__(self):
+        self.grid = None
         self.position = None
         self.direction = None
         self.running = False
 
 def mk2_draw_world(state):
-    for i, row in enumerate(state.footprint):
-        for j, col in enumerate(state.footprint[i]):
-            if col == True:
-                draw_colored_cell(i, j, rl.BLUE)
+    for y, row in enumerate(state.grid):
+        for x, col in enumerate(state.grid[y]):
+            if col == Cell.VISITED:
+                draw_colored_cell(x, y, rl.BLUE)
+            elif col == Cell.DEBRIS:
+                draw_colored_cell(x, y, rl.PURPLE)
     
 def mk2_step_world(state):
     if not state.running:
-        state.footprint = make_filled_grid(False)
-        state.position = pick_random_position()
-        state.footprint[state.position.x, state.position.y] = True
+        state.grid = POPULATED_GRID.copy()
+        state.position = pick_random_position(state.grid)
         state.running = True
 
-    # pick direction now
+    next_position = mk2_pick_next_position(state)
+    if next_position == None:
+        state.running = False
+        return
+
+    state.grid[state.position.x][state.position.y] = Cell.VISITED
+    state.position = next_position
     
+def mk2_pick_next_position(state):
+    direction = mk2_pick_best_direction(state)
+    if direction == None:
+        return None
+
+    return translate_move(Move(state.position, direction))
+
+def mk2_pick_best_direction(state):
+    position = state.position
+    steps = {}
+    
+    steps[Direction.UP] = mk2_get_onward_steps(state, Direction.UP)
+    steps[Direction.RIGHT] = mk2_get_onward_steps(state, Direction.RIGHT)
+    steps[Direction.DOWN] = mk2_get_onward_steps(state, Direction.DOWN)
+    steps[Direction.LEFT] = mk2_get_onward_steps(state, Direction.LEFT)
+
+    steps = dict(filter(lambda x: x[1] > 0, steps.items()))
+    if len(steps) == 0:
+        return None
+
+    choice = min(steps.items(), key = lambda x: x[1])
+    return choice[0]
+
+def mk2_get_onward_steps(state, direction):
+    position = state.position
+    steps = 0
+    while True:
+        position = translate_move(Move(position, direction))
+        if is_illegal_position(state.grid, position):
+            break
+
+        steps += 1
+
+    return steps
 
 class Mk2State:
     def __init__(self):
         self.position = None
         self.direction = None
         self.running = False
-        self.footprint = None
         
 # Generic stuff        
-def make_filled_grid(value):
-    return [[value for _ in range(COL_COUNT)] for _ in range(ROW_COUNT)]
-
 def draw_colored_cell(x, y, color):
     rl.draw_rectangle(
         x * PIXEL_SCALE,
@@ -124,19 +159,33 @@ def draw_colored_cell(x, y, color):
         color
     )
     
-def pick_random_position():
+def pick_random_position(grid):
     return Position(
-        random.randint(0, MAX_X),
-        random.randint(0, MAX_Y)
+        random.randint(0, len(grid[0]) - 1),
+        random.randint(0, len(grid) - 1)
     )
+
+def translate_move(move):
+    x = move.position.x
+    y = move.position.y
+    direction = move.direction
+    if direction == Direction.UP:
+        return Position(x, y - 1)
+    elif direction == Direction.RIGHT:
+        return Position(x + 1, y)
+    elif direction == Direction.DOWN:
+        return Position(x, y + 1)
+    elif direction == Direction.LEFT:
+        return Position(x - 1, y)
     
 def rotate_robot_clockwise(state):
     return Direction((state.direction.value + 1) % len(Direction))
 
-def will_collide(next_position):
-    x = next_position.x
-    y = next_position.y
-    return not (x >= 0 and x < len(EMPTY_GRID[0]) and y >= 0 and y < len(EMPTY_GRID))
+def is_illegal_position(grid, position):
+    x = position.x
+    y = position.y
+    in_bounds = (x >= 0 and x < len(grid[0]) and y >= 0 and y < len(grid))
+    return not in_bounds or grid[x][y] == Cell.DEBRIS
 
 def print_usage():
     print('usage: {0} [MODEL]'.format(sys.argv[0]))
@@ -151,7 +200,17 @@ class Direction(Enum):
     RIGHT = 1
     DOWN = 2
     LEFT = 3
+
+class Cell(Enum):
+    FREE = 0
+    VISITED = 1
+    DEBRIS = 2
     
+class Move:
+    def __init__(self, position, direction):
+        self.position = position
+        self.direction = direction
+
 class SimulationContext:
     def __init__(self):
         self.state = None
@@ -160,22 +219,22 @@ class SimulationContext:
 
 ROW_COUNT = 10
 COL_COUNT = ROW_COUNT
-MAX_X = COL_COUNT - 1
-MAX_Y = ROW_COUNT - 1
 
-# NOTE(cya): silly python static 2D array syntax
-EMPTY_GRID = [[0 for _ in range(COL_COUNT)] for _ in range(ROW_COUNT)]
-STATIC_GRID = [
-    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-    [1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
-    [0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
-    [0, 0, 0, 1, 0, 1, 1, 1, 1, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 1, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 1, 0],
-    [0, 0, 0, 0, 0, 1, 0, 1, 1, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+F = Cell.FREE
+D = Cell.DEBRIS
+
+EMPTY_GRID = [[F for _ in range(COL_COUNT)] for _ in range(ROW_COUNT)]
+POPULATED_GRID = [
+    [F, F, F, F, D, F, F, F, F, F],
+    [D, F, F, D, F, F, F, F, F, F],
+    [F, F, D, F, F, F, F, F, F, F],
+    [F, F, D, F, F, D, F, F, F, F],
+    [F, D, F, F, F, F, D, F, F, F],
+    [F, F, F, D, F, D, D, D, D, F],
+    [F, F, F, F, F, D, F, F, D, F],
+    [F, F, F, F, F, D, F, F, D, F],
+    [F, F, F, F, F, D, F, D, D, F],
+    [F, F, F, F, F, D, F, F, F, F],
 ]
 
 PIXEL_SCALE = 48
