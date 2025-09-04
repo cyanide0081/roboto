@@ -9,25 +9,8 @@ def main():
         print_usage()
         return
     
-    context = SimulationContext()
     model = sys.argv[1]
-    if model == '1':
-        context.state = Mk1State()
-        context.step_proc = mk1_step_world
-        context.draw_proc = mk1_draw_world
-    elif model == '2':
-        context.state = Mk2State()
-        context.step_proc = mk2_step_world
-        context.draw_proc = mk2_draw_world
-    elif model == '3':
-        print('not implemented yet')
-        return
-    elif model == '4':
-        print('not implemented yet')
-        return
-    else:
-        print_usage()
-        return
+    context = crack_context(model)
     
     rl.init_window(WINDOW_WIDTH, WINDOW_HEIGHT, 'ロボット')
     rl.set_target_fps(TARGET_FPS) # TODO(cya): change to 60 and do manual sleep
@@ -43,6 +26,38 @@ def main():
         
     rl.close_window()
     
+def crack_context(model):
+    context = SimulationContext()
+    if model == '1':
+        context.state = Mk1State()
+        context.step_proc = mk1_step_world
+        context.draw_proc = mk1_draw_world
+    elif model == '2':
+        context.state = Mk2State()
+        context.step_proc = mk2_step_world
+        context.draw_proc = mk2_draw_world
+    elif model == '2.1':
+        context.state = Mk2State()
+        context.step_proc = mk2_1_step_world
+        context.draw_proc = mk2_1_draw_world
+    elif model == '3':
+        context.state = Mk3State()
+        context.step_proc = mk3_step_world
+        context.draw_proc = mk3_draw_world
+    elif model == '3.1':
+        context.state = Mk3State()
+        context.step_proc = mk3_1_step_world
+        context.draw_proc = mk3_1_draw_world
+    elif model == '4':
+        context.state = Mk4State()
+        context.step_proc = mk4_step_world
+        context.draw_proc = mk4_draw_world
+    else:
+        print_usage()
+        sys.exit()
+
+    return context
+
 # Mk1 model
 def mk1_draw_world(state):
     rl.clear_background(rl.BLACK)
@@ -50,13 +65,13 @@ def mk1_draw_world(state):
     
 def mk1_step_world(state):
     if not state.running:
-        state.grid = EMTPY_GRID.copy()
+        state.grid = EMPTY_GRID.copy()
         state.position = pick_random_position(state.grid)
         state.direction = Direction.UP
         state.running = True
     
     next_position = mk1_move_robot(state)
-    while is_illegal_position(state.grid, next_position):
+    while is_out_of_bounds(state.grid, next_position):
         if state.direction == Direction.LEFT:
             state.running = False
             break
@@ -91,12 +106,10 @@ def mk2_draw_world(state):
         for x, col in enumerate(state.grid[y]):
             if col == Cell.VISITED:
                 draw_colored_cell(x, y, rl.BLUE)
-            elif col == Cell.DEBRIS:
-                draw_colored_cell(x, y, rl.PURPLE)
     
 def mk2_step_world(state):
     if not state.running:
-        state.grid = POPULATED_GRID.copy()
+        state.grid = EMPTY_GRID.copy()
         state.position = pick_random_position(state.grid)
         state.running = True
 
@@ -129,19 +142,77 @@ def mk2_pick_best_direction(state):
         return None
 
     choice = min(steps.items(), key = lambda x: x[1])
+    ties = dict(filter(lambda x: x[1] == choice[1], steps.items()))
+    if len(ties) > 1:
+        mk2_break_ties(ties, state.grid, position)
+        choice = min(steps.items(), key = lambda x: x[1])
+
     return choice[0]
 
 def mk2_get_onward_steps(state, direction):
+    grid = state.grid
     position = state.position
     steps = 0
     while True:
         position = translate_move(Move(position, direction))
-        if is_illegal_position(state.grid, position):
+        if is_out_of_bounds(grid, position):
             break
 
-        steps += 1
+        cell = get_cell(grid, position)
+        if cell == Cell.DEBRIS or cell == Cell.VISITED:
+            break
+
+        steps += 1 
 
     return steps
+
+def mk2_break_ties(ties, grid, position):
+    for tie in ties.items():
+        pos = translate_move(Move(position, tie[0]))
+        count = count_adjacent_visited_cells(grid, pos)
+        ties[tie[0]] -= count
+
+def get_cell(grid, position):
+    return grid[position.x][position.y]
+
+def count_adjacent_visited_cells(grid, position):
+    result = 0
+    up = translate_move(Move(position, Direction.UP))
+    if not is_out_of_bounds(grid, up) and get_cell(grid, up) == Cell.VISITED: 
+        result += 1
+    right = translate_move(Move(position, Direction.RIGHT))
+    if not is_out_of_bounds(grid, right) and get_cell(grid, right) == Cell.VISITED: 
+        result += 1
+    down = translate_move(Move(position, Direction.DOWN))
+    if not is_out_of_bounds(grid, down) and get_cell(grid, down) == Cell.VISITED: 
+        result += 1
+    left = translate_move(Move(position, Direction.LEFT))
+    if not is_out_of_bounds(grid, left) and get_cell(grid, left) == Cell.VISITED: 
+        result += 1
+
+    return result
+
+def mk2_1_draw_world(state):
+    for y, row in enumerate(state.grid):
+        for x, col in enumerate(state.grid[y]):
+            if col == Cell.VISITED:
+                draw_colored_cell(x, y, rl.BLUE)
+            elif col == Cell.DEBRIS:
+                draw_colored_cell(x, y, rl.PURPLE)
+    
+def mk2_1_step_world(state):
+    if not state.running:
+        state.grid = POPULATED_GRID.copy()
+        state.position = pick_random_position(state.grid)
+        state.running = True
+
+    # next_position = mk2_pick_next_position(state)
+    # if next_position == None:
+    #     state.running = False
+    #     return
+
+    # state.grid[state.position.x][state.position.y] = Cell.VISITED
+    # state.position = next_position
 
 class Mk2State:
     def __init__(self):
@@ -160,10 +231,13 @@ def draw_colored_cell(x, y, color):
     )
     
 def pick_random_position(grid):
-    return Position(
-        random.randint(0, len(grid[0]) - 1),
-        random.randint(0, len(grid) - 1)
-    )
+    while True:
+        position = Position(
+            random.randint(0, len(grid[0]) - 1),
+            random.randint(0, len(grid) - 1)
+        )
+        if grid[position.x][position.y] != Cell.DEBRIS:
+            return position
 
 def translate_move(move):
     x = move.position.x
@@ -181,11 +255,10 @@ def translate_move(move):
 def rotate_robot_clockwise(state):
     return Direction((state.direction.value + 1) % len(Direction))
 
-def is_illegal_position(grid, position):
+def is_out_of_bounds(grid, position):
     x = position.x
     y = position.y
-    in_bounds = (x >= 0 and x < len(grid[0]) and y >= 0 and y < len(grid))
-    return not in_bounds or grid[x][y] == Cell.DEBRIS
+    return not (x >= 0 and x < len(grid[0]) and y >= 0 and y < len(grid))
 
 def print_usage():
     print('usage: {0} [MODEL]'.format(sys.argv[0]))
@@ -240,7 +313,7 @@ POPULATED_GRID = [
 PIXEL_SCALE = 48
 WINDOW_WIDTH = COL_COUNT * PIXEL_SCALE
 WINDOW_HEIGHT = ROW_COUNT * PIXEL_SCALE
-TARGET_FPS = 10
+TARGET_FPS = 15
 
 if __name__ == '__main__':
     main()
