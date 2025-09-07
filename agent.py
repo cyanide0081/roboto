@@ -357,7 +357,9 @@ def mk4_draw_world(state):
 def mk4_step_world(state):
     if not state.running:
         state.grid = clone(WEIGHTED_GRID)
-        state.start, state.goal = pick_random_points(state.grid)
+        # state.start, state.goal = pick_random_points(state.grid)
+        state.start = Position(5, 0)
+        state.goal = Position(5, 9)
         state.path = get_astar_path(state)
         state.running = True
 
